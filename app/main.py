@@ -1,10 +1,11 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from .database import get_db, engine
 from . import models
+from .schemas import Movie, CreateMovie, UpdateMovie
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -18,62 +19,61 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class Movie(BaseModel):
-    id: int
-    name: str
-    description: str
-    rating: float
-    
-movies = {
-    1:  Movie(id=1, name="Inception", rating=8.8, description="A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a CEO." ),
-    2:  Movie(id=2, name="The Dark Knight", rating=9.0, description="When the menace known as the Joker emerges from his mysterious past, he wreaks havoc and chaos on the people of Gotham."),
-    3:  Movie(id=3, name="Interstellar", rating=8.6, description="A team of explorers travel through a wormhole in space in an attempt to ensure humanity's survival."),
-    4:  Movie(id=4, name="Comeback Kids", rating=6.6, description="Reload server please")
-}
-
 @app.get("/movies", response_model=List[Movie])
 def findAll(search: Optional[str] = None, db: Session = Depends(get_db)):    
     if (search is None):
         return db.query(models.Movie).all()
         
-    return list(filter(lambda movie: search.lower() in movie.name.lower(), movies.values()))
+    search = f"%{search.lower()}%"
+    movies = db.query(models.Movie).filter(
+        or_(
+            models.Movie.name.ilike(search),
+            models.Movie.description.ilike(search)
+        )
+    ).all()
+    
+    return movies
 
 @app.get("/movies/{movie_id}", response_model=Movie)
-def findOne(movie_id: int):
-    if (movie_id not in movies):
-        raise HTTPException(404, "Movie not found")
+def findOne(movie_id: int, db: Session = Depends(get_db)):
+    db_movie = db.query(models.Movie).filter(models.Movie.id == movie_id).first()
     
-    return movies[movie_id]
+    if (db_movie is None):
+        raise HTTPException(404)
+    
+    return db_movie
 
 @app.post("/movies", response_model=Movie)
-def create(movie: Movie):
-    if (movie.id in movies):
-        raise HTTPException(422, "Id {} already exists in movies".format(movie.id))
-    
-    movies[movie.id] = movie
-    return movie
+def create(movie: CreateMovie, db: Session = Depends(get_db)):
+    db_movie = models.Movie(**movie.model_dump())
+    db.add(db_movie)
+    db.commit()
+    db.refresh(db_movie)
+    return db_movie
 
 @app.put("/movies/{movie_id}", response_model=Movie)
-def update(movie_id: int, rating: Optional[float] = None, description: Optional[str] = None):
-    if (movie_id not in movies):
-        raise HTTPException(404, "Movie not found")
+def update(movie_id: int, movie: UpdateMovie, db: Session = Depends(get_db)):
+    db_movie = db.query(models.Movie).filter(models.Movie.id == movie_id).first()
     
-    movie = movies[movie_id]
+    if (db_movie is None):
+        raise HTTPException(404)
     
-    if (rating is not None):
-        movie.rating = rating
-    if (description is not None):
-        movie.description = description
+    for key, value in movie.model_dump(exclude_unset=True).items():
+        setattr(db_movie, key, value)
         
-    movies[movie.id] = movie
+    db.commit()
+    db.refresh(db_movie)
     
-    return movie
+    return db_movie
 
 @app.delete("/movies/{movie_id}", status_code=204)
-def delete(movie_id: int):
-    if (movie_id not in movies):
-        raise HTTPException(404, "Movie not found")
+def delete(movie_id: int, db: Session = Depends(get_db)):
+    db_movie = db.query(models.Movie).filter(models.Movie.id == movie_id).first()
     
-    del movies[movie_id]
+    if (db_movie is None):
+        raise HTTPException(404)
+    
+    db.delete(db_movie)
+    db.commit()
     
     return
