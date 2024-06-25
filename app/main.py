@@ -3,7 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from .database import get_db
+from .database import get_db, engine
+from . import models
+
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()   
 
@@ -31,8 +34,8 @@ movies = {
 @app.get("/movies", response_model=List[Movie])
 def findAll(search: Optional[str] = None, db: Session = Depends(get_db)):    
     if (search is None):
-        return movies.values()
-    
+        return db.query(models.Movie).all()
+        
     return list(filter(lambda movie: search.lower() in movie.name.lower(), movies.values()))
 
 @app.get("/movies/{movie_id}", response_model=Movie)
