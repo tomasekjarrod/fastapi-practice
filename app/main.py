@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from .database import get_db, engine
 from . import models
-from .schemas import Movie, CreateMovie, UpdateMovie
+from .schemas import Movie, CreateMovie, UpdateMovie, Director, CreateDirector
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -20,7 +20,7 @@ app.add_middleware(
 )
 
 @app.get("/movies", response_model=List[Movie])
-def findAll(search: Optional[str] = None, db: Session = Depends(get_db)):    
+def findAllMovies(search: Optional[str] = None, db: Session = Depends(get_db)):    
     if (search is None):
         return db.query(models.Movie).all()
         
@@ -35,7 +35,7 @@ def findAll(search: Optional[str] = None, db: Session = Depends(get_db)):
     return movies
 
 @app.get("/movies/{movie_id}", response_model=Movie)
-def findOne(movie_id: int, db: Session = Depends(get_db)):
+def findOneMovie(movie_id: int, db: Session = Depends(get_db)):
     db_movie = db.query(models.Movie).filter(models.Movie.id == movie_id).first()
     
     if (db_movie is None):
@@ -44,7 +44,7 @@ def findOne(movie_id: int, db: Session = Depends(get_db)):
     return db_movie
 
 @app.post("/movies", response_model=Movie)
-def create(movie: CreateMovie, db: Session = Depends(get_db)):
+def createMovie(movie: CreateMovie, db: Session = Depends(get_db)):
     db_movie = models.Movie(**movie.model_dump())
     db.add(db_movie)
     db.commit()
@@ -52,7 +52,7 @@ def create(movie: CreateMovie, db: Session = Depends(get_db)):
     return db_movie
 
 @app.put("/movies/{movie_id}", response_model=Movie)
-def update(movie_id: int, movie: UpdateMovie, db: Session = Depends(get_db)):
+def updateMovie(movie_id: int, movie: UpdateMovie, db: Session = Depends(get_db)):
     db_movie = db.query(models.Movie).filter(models.Movie.id == movie_id).first()
     
     if (db_movie is None):
@@ -67,7 +67,7 @@ def update(movie_id: int, movie: UpdateMovie, db: Session = Depends(get_db)):
     return db_movie
 
 @app.delete("/movies/{movie_id}", status_code=204)
-def delete(movie_id: int, db: Session = Depends(get_db)):
+def deleteMovie(movie_id: int, db: Session = Depends(get_db)):
     db_movie = db.query(models.Movie).filter(models.Movie.id == movie_id).first()
     
     if (db_movie is None):
@@ -77,3 +77,17 @@ def delete(movie_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return
+
+@app.get("/directors", response_model=List[Director])
+def findAllDirectors(db: Session = Depends(get_db)):
+    return db.query(models.Director).all()
+
+@app.post("/directors")
+def createDirector(director: CreateDirector, db: Session = Depends(get_db)):
+    db_director = models.Director(**director.model_dump())
+    db.add(db_director)
+    db.commit()
+    db.refresh()
+    
+    return db_director
+    
